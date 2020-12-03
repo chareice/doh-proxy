@@ -12,10 +12,15 @@ import (
 	"github.com/miekg/dns"
 )
 
+var upstreamServer string
+
 func main() {
 	listenPort := flag.String("port", "53", " Server Listen Port")
 	listenHost := flag.String("host", "127.0.0.1", " Server Listen Host")
+	upstream := flag.String("upstream", "https://cloudflare-dns.com/dns-query", "Upstream Server")
 	flag.Parse()
+
+	upstreamServer = *upstream
 
 	listenAddr, err := net.ResolveUDPAddr("udp4", fmt.Sprintf("%s:%s", *listenHost, *listenPort))
 	if err != nil {
@@ -38,7 +43,6 @@ func main() {
 
 		go serveDNSQuery(conn, addr, buf)
 	}
-
 }
 
 func serveDNSQuery(conn *net.UDPConn, addr *net.UDPAddr, buf []byte) {
@@ -57,13 +61,16 @@ func serveDNSQuery(conn *net.UDPConn, addr *net.UDPAddr, buf []byte) {
 
 	log.Printf("Questions: %v\n", msg.Question)
 
-	requestURL := fmt.Sprintf("https://cloudflare-dns.com/dns-query?dns=%s", base64.URLEncoding.EncodeToString(packedMessage))
+	requestURL := fmt.Sprintf("%s?dns=%s", upstreamServer, base64.URLEncoding.EncodeToString(packedMessage))
 
 	resp, err := http.Get(requestURL)
+
 	if err != nil {
 		log.Printf("DOH Response Error %v", err)
 		return
 	}
+
+	defer resp.Body.Close()
 
 	body, err := ioutil.ReadAll(resp.Body)
 
